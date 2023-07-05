@@ -10,8 +10,5 @@ proc-macro2 = "1.0.63"
 quote = "1.0.29"
 syn = "2.0.23"
 
-[dev-dependencies]
-assert-tokenstreams-eq = "0.1.0"
-
 [lib]
 proc-macro = true
