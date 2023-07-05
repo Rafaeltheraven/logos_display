@@ -1,5 +1,5 @@
 [package]
-name = "logos_display"
+name = "logos-display"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 proc-macro2 = "1.0.63"
 quote = "1.0.29"
-syn = {version = "2.0.23", features = ["extra-traits"]}
+syn = "2.0.23"
 
 [dev-dependencies]
 assert-tokenstreams-eq = "0.1.0"
