@@ -1,5 +1,5 @@
 # Logos Display
-A small derive macro that automatically implements `Display` for an enum based on the `Logos` `token` attribute.
+A derive macro that automatically implements `Display` for an enum based on the [Logos](https://github.com/maciejhirsz/logos) `token` and `regex` attributes.
 
 ## How To Use
 Simply `use logos_display::Display` and add it to your derives, like so:
