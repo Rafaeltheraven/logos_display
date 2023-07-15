@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Rafael Dulfer"]
 repository = "https://github.com/Rafaeltheraven/logos_display"
+description = "A derive macro to automatically define the Display trait based on logos `token` and `regex` attributes."
 license = "MIT"
 keywords = ["proc-macros", "logos", "display", "string", "macros"]
 categories = ["development-tools", "encoding"]
