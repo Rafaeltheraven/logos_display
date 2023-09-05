@@ -30,13 +30,13 @@ impl std::fmt::Display for A {
 ```
 
 ### Dealing with non-tokens
-In the case that a variant is not a token or regex, the name of the variant will be used for the Display method (so variant `B` will have `"B"` as it's string representation). If you want to override any of this functionality, you can add an `override_display("string")` attribute to the variant as follows:
+In the case that a variant is not a token or regex, the name of the variant will be used for the Display method (so variant `B` will have `"B"` as it's string representation). If you want to override any of this functionality, you can add an `display_override("string")` attribute to the variant as follows:
 
 ```rust
 use logos_display::Display
 #[derive(Display, Logos)]
 enum A {
-	#[override_display("fancy curly thing")]
+	#[display_override("fancy curly thing")]
 	#[token("{")]
 	LCur,
 
