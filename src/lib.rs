@@ -92,8 +92,14 @@ fn logos_display_derive(e: DataEnum, ident: &Ident, concat: Option<String>, incl
     let mut repr_map: Vec<(TokenStream2, TokenStream2)> = Vec::with_capacity(e.variants.len());
     for variant in e.variants.into_iter() {
         let args = match variant.fields {
-            syn::Fields::Named(f) if include_inner => Some(gen_anon_args(f.named.len())),
-            syn::Fields::Unnamed(f) if include_inner => Some(gen_anon_args(f.unnamed.len())),
+            syn::Fields::Named(f) if include_inner => {
+                let list = gen_anon_args(f.named.len());
+                Some(quote!({#list}))
+            }
+            syn::Fields::Unnamed(f) if include_inner => {
+                let list = gen_anon_args(f.unnamed.len());
+                Some(quote!((#list)))
+            },
             syn::Fields::Named(..) => Some(quote!({..})),
             syn::Fields::Unnamed(..) => Some(quote!((..))),
             syn::Fields::Unit => None,
@@ -143,7 +149,7 @@ fn logos_display_derive(e: DataEnum, ident: &Ident, concat: Option<String>, incl
         }
         if let Some(list) = args {
             if include_inner {
-                repr_map.push((quote!(#id (#list)), quote!(format!("{}{:?}", #repr, vec![#list]))));
+                repr_map.push((quote!(#id #list), quote!(format!("{}{:?}", #repr, vec!#list))));
             } else {
                 repr_map.push((quote!(#id #list), quote!(#repr.to_string())));
             }
@@ -324,17 +330,25 @@ mod tests {
         let input = quote!(
             enum A {
                 #[regex("[a-z]", |lex| funny_business(lex.slice()))]
-                Reg(First, Second, Third)
+                Reg(First, Second, Third),
+
+                #[regex("[A-Z]", |lex| more_funny(lex.slice()))]
+                Reg2 {
+                    first: Type,
+                    second: Another
+                }
             }
         );
         let arms_debug = quote!(
-            A::Reg(_arg1, _arg2, _arg3) => format!("{}{:?}", "[a-z]", vec![_arg1, _arg2, _arg3])
+            A::Reg(_arg1, _arg2, _arg3) => format!("{}{:?}", "[a-z]", vec!(_arg1, _arg2, _arg3)),
+            A::Reg2{_arg1, _arg2} => format!("{}{:?}", "[A-Z]", vec!{_arg1, _arg2}),
         );
         let expected_debug = expect(arms_debug, true);
         let result_debug = _logos_display(input.clone(), true);
         assert_tokenstreams_eq!(&result_debug, &expected_debug);
         let arms_display = quote!(
-            A::Reg(..) => "[a-z]".to_string()
+            A::Reg(..) => "[a-z]".to_string(),
+            A::Reg2{..} => "[A-Z]".to_string(),
         );
         let expected_display = expect(arms_display, false);
         let result_display = _logos_display(input, false);
