@@ -1,4 +1,3 @@
-
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use std::matches;
@@ -58,51 +57,64 @@ fn _logos_display(input: TokenStream2, debug: bool) -> TokenStream2 {
         _ => Err(syn::Error::new(span, "Can only derive display for enums"))
     };
     let traitt = if debug {
-        quote!(std::fmt::Debug)
+        quote!(core::fmt::Debug)
     } else {
-        quote!(std::fmt::Display)
+        quote!(core::fmt::Display)
     };
+    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
     match resp {
         Ok(stream) => {
             quote! {
-                impl #traitt for #ident {
-                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                        let ret = match &self {
+                impl #impl_generics #traitt for #ident #ty_generics #where_clause {
+                    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                        use core::fmt::Write;
+                        match &self {
                             #stream
-                        };
-                        write!(f, "{}", ret)
+                        }
                     }
                 }
             }
-        },
+        }
         Err(e) => e.to_compile_error()
     }
 }
 
-fn gen_anon_args(n: usize) -> TokenStream2 {
+fn gen_anon_args(n: usize) -> Vec<proc_macro2::TokenStream> {
     let mut args = Vec::new();
     for i in 1..=n {
         let arg_ident = Ident::new(&format!("_arg{}", i), proc_macro2::Span::call_site());
         args.push(quote!(#arg_ident));
     }
-    quote!(#(#args),*)
+    args
 }
 
 fn logos_display_derive(e: DataEnum, ident: &Ident, concat: Option<String>, include_inner: bool) -> Result<TokenStream2> {
     let mut repr_map: Vec<(TokenStream2, TokenStream2)> = Vec::with_capacity(e.variants.len());
     for variant in e.variants.into_iter() {
-        let args = match variant.fields {
+        let res = match variant.fields {
             syn::Fields::Named(f) if include_inner => {
-                let list = gen_anon_args(f.named.len());
-                Some(quote!({#list}))
+                let args = gen_anon_args(f.named.len());
+                let key_list = quote!(#(#args),*);
+                let key_list = quote!({#key_list});
+                let ref_array = quote!(#(&#args),*);
+                Some((key_list, Some(ref_array)))
             }
             syn::Fields::Unnamed(f) if include_inner => {
-                let list = gen_anon_args(f.unnamed.len());
-                Some(quote!((#list)))
-            },
-            syn::Fields::Named(..) => Some(quote!({..})),
-            syn::Fields::Unnamed(..) => Some(quote!((..))),
-            syn::Fields::Unit => None,
+                let args = gen_anon_args(f.unnamed.len());
+                let key_list = quote!(#(#args),*);
+                let key_list = quote!((#key_list));
+                let ref_array = quote!(#(&#args),*);
+                Some((key_list, Some(ref_array)))
+            }
+            syn::Fields::Named(..) => {
+                let key_list = quote!({..});
+                Some((key_list, None))
+            }
+            syn::Fields::Unnamed(..) => {
+                let key_list = quote!((..));
+                Some((key_list, None))
+            }
+            _ => None,
         };
         let id = variant.ident;
         let mut repr = id.to_string().into_token_stream();
@@ -139,7 +151,7 @@ fn logos_display_derive(e: DataEnum, ident: &Ident, concat: Option<String>, incl
                             found = Some(string);
                         }
                     } else {
-                        return Err(syn::Error::new(span, "Error extracting token from attribute, not a string"))
+                        return Err(syn::Error::new(span, "Error extracting token from attribute, not a string"));
                     }
                 }
             }
@@ -147,19 +159,18 @@ fn logos_display_derive(e: DataEnum, ident: &Ident, concat: Option<String>, incl
         if let Some(string) = found {
             repr = string.into_token_stream();
         }
-        if let Some(list) = args {
-            if include_inner {
-                repr_map.push((quote!(#id #list), quote!(format!("{}{:?}", #repr, vec!#list))));
-            } else {
-                repr_map.push((quote!(#id #list), quote!(#repr.to_string())));
+        if let Some((key_list, ref_array)) = res {
+            match ref_array {
+                None => repr_map.push((quote!(#id #key_list), quote!(write!(f, "{}", #repr)))),
+                Some(ref_array) => repr_map.push((quote!(#id #key_list), quote!(write!(f, "{}{:?}", #repr, [#ref_array]))))
             }
         } else {
-            repr_map.push((quote!(#id), quote!(#repr.to_string())));
+            repr_map.push((quote!(#id), quote!(write!(f, "{}", #repr))));
         }
     }
     let arms: Vec<TokenStream2> = repr_map.iter().map(|(k, v)| quote!(#ident::#k => #v,)).collect();
     Ok(quote!(#( #arms )*))
-} 
+}
 
 #[cfg(test)]
 mod tests {
@@ -168,19 +179,31 @@ mod tests {
     use quote::quote;
     use assert_tokenstreams_eq::assert_tokenstreams_eq;
 
-    fn expect(arms: TokenStream, debug: bool) -> TokenStream {
+
+    fn expect(arms: TokenStream, debug: bool, generic_lifetimes: Option<&[TokenStream]>, where_clauses: Option<&[TokenStream]>) -> TokenStream {
         let traitt = if debug {
-            quote!(std::fmt::Debug)
+            quote!(core::fmt::Debug)
         } else {
-            quote!(std::fmt::Display)
+            quote!(core::fmt::Display)
         };
+
+        let generic_lifetimes = match generic_lifetimes {
+            None => quote!(),
+            Some(generic_lifetimes) => quote!(<#(#generic_lifetimes),*>)
+        };
+
+        let where_clauses = match where_clauses {
+            None => quote!(),
+            Some(where_clauses) => quote!(where #(#where_clauses),*)
+        };
+
         quote!(
-            impl #traitt for A {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    let ret = match &self {
+            impl #generic_lifetimes #traitt for A #generic_lifetimes #where_clauses {
+                fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                    use core::fmt::Write;
+                    match &self {
                         #arms
-                    };
-                    write!(f, "{}", ret)
+                    }
                 }
             }
         )
@@ -198,10 +221,10 @@ mod tests {
             }
         );
         let arms = quote!(
-            A::LCur => "{".to_string(),
-            A::RCur => "}".to_string(),
+            A::LCur => write!(f, "{}" ,"{"),
+            A::RCur => write!(f, "{}", "}"),
         );
-        let expected = expect(arms, false);
+        let expected = expect(arms, false, None, None);
         let result = _logos_display(input, false);
         assert_tokenstreams_eq!(&result, &expected);
     }
@@ -223,11 +246,11 @@ mod tests {
             }
         );
         let arms = quote!(
-            A::LCur => "fancy curly thing".to_string(),
-            A::RCur => "}".to_string(),
-            A::Minus => "dash".to_string(),
+            A::LCur => write!(f, "{}", "fancy curly thing"),
+            A::RCur => write!(f, "{}", "}"),
+            A::Minus => write!(f, "{}", "dash"),
         );
-        let expected = expect(arms, false);
+        let expected = expect(arms, false, None, None);
         let result = _logos_display(input, false);
         assert_tokenstreams_eq!(&result, &expected);
     }
@@ -244,11 +267,11 @@ mod tests {
             }
         );
         let arms = quote!(
-            A::LCur => "{".to_string(),
-            A::RCur => "\".*\"".to_string(),
+            A::LCur => write!(f, "{}", "{"),
+            A::RCur => write!(f, "{}", "\".*\""),
         );
-        let expected = expect(arms, false);
-        let result = _logos_display(input,false);
+        let expected = expect(arms, false, None, None);
+        let result = _logos_display(input, false);
         assert_tokenstreams_eq!(&result, &expected);
     }
 
@@ -264,10 +287,10 @@ mod tests {
             }
         );
         let arms = quote!(
-            A::LCur => "{".to_string(),
-            A::RCur => "\".*\"".to_string()
+            A::LCur => write!(f, "{}", "{"),
+            A::RCur => write!(f, "{}", "\".*\""),
         );
-        let expected = expect(arms, false);
+        let expected = expect(arms, false, None, None);
         let result = _logos_display(input, false);
         assert_tokenstreams_eq!(&result, &expected);
     }
@@ -282,9 +305,9 @@ mod tests {
             }
         );
         let arms = quote!(
-            A::Cur => "{/}".to_string(),
+            A::Cur => write!(f, "{}", "{/}"),
         );
-        let expected = expect(arms, false);
+        let expected = expect(arms, false, None, None);
         let result = _logos_display(input, false);
         assert_tokenstreams_eq!(&result, &expected);
     }
@@ -300,9 +323,9 @@ mod tests {
             }
         );
         let arms = quote!(
-            A::Cur => "{ or }".to_string(),
+            A::Cur => write!(f, "{}", "{ or }"),
         );
-        let expected = expect(arms, false);
+        let expected = expect(arms, false, None, None);
         let result = _logos_display(input, false);
         assert_tokenstreams_eq!(&result, &expected);
     }
@@ -318,9 +341,9 @@ mod tests {
             }
         );
         let arms = quote!(
-            A::Cur => "}".to_string(),
+            A::Cur => write!(f, "{}", "}"),
         );
-        let expected = expect(arms, false);
+        let expected = expect(arms, false, None, None);
         let result = _logos_display(input, false);
         assert_tokenstreams_eq!(&result, &expected);
     }
@@ -340,17 +363,51 @@ mod tests {
             }
         );
         let arms_debug = quote!(
-            A::Reg(_arg1, _arg2, _arg3) => format!("{}{:?}", "[a-z]", vec!(_arg1, _arg2, _arg3)),
-            A::Reg2{_arg1, _arg2} => format!("{}{:?}", "[A-Z]", vec!{_arg1, _arg2}),
+            A::Reg(_arg1, _arg2, _arg3) => write!(f, "{}{:?}", "[a-z]", [&_arg1, &_arg2, &_arg3]),
+            A::Reg2{_arg1, _arg2} => write!(f, "{}{:?}", "[A-Z]", [&_arg1, &_arg2]),
         );
-        let expected_debug = expect(arms_debug, true);
+        let expected_debug = expect(arms_debug, true, None, None);
         let result_debug = _logos_display(input.clone(), true);
         assert_tokenstreams_eq!(&result_debug, &expected_debug);
         let arms_display = quote!(
-            A::Reg(..) => "[a-z]".to_string(),
-            A::Reg2{..} => "[A-Z]".to_string(),
+            A::Reg(..) => write!(f, "{}", "[a-z]"),
+            A::Reg2{..} => write!(f, "{}", "[A-Z]"),
         );
-        let expected_display = expect(arms_display, false);
+        let expected_display = expect(arms_display, false, None, None);
+        let result_display = _logos_display(input, false);
+        assert_tokenstreams_eq!(&result_display, &expected_display);
+    }
+
+    #[test]
+    fn test_with_generics()
+    {
+        let input = quote!(
+            enum A<'a, 'b, T, U> where T:U {
+                #[regex("[a-z]", |lex| funny_business(lex.slice()))]
+                Reg(First<'a>, Second<'b>, Third<'a>, T),
+
+                #[regex("[A-Z]", |lex| more_funny(lex.slice()))]
+                Reg2 {
+                    first: Type<'a>,
+                    second: Another<'b>,
+                    third: U
+                }
+            }
+        );
+        let arms_debug = quote!(
+            A::Reg(_arg1, _arg2, _arg3, _arg4) => write!(f, "{}{:?}", "[a-z]", [&_arg1, &_arg2, &_arg3, &_arg4]),
+            A::Reg2{_arg1, _arg2, _arg3} => write!(f, "{}{:?}", "[A-Z]", [&_arg1, &_arg2, &_arg3]),
+        );
+        let generics = [quote!('a), quote!('b), quote!(T), quote!(U)];
+        let wheres = [quote!(T:U)];
+        let expected_debug = expect(arms_debug, true, Some(&generics), Some(&wheres));
+        let result_debug = _logos_display(input.clone(), true);
+        assert_tokenstreams_eq!(&result_debug, &expected_debug);
+        let arms_display = quote!(
+            A::Reg(..) => write!(f, "{}", "[a-z]"),
+            A::Reg2{..} => write!(f, "{}", "[A-Z]"),
+        );
+        let expected_display = expect(arms_display, false, Some(&generics), Some(&wheres));
         let result_display = _logos_display(input, false);
         assert_tokenstreams_eq!(&result_display, &expected_display);
     }
