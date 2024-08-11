@@ -2,9 +2,9 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use std::matches;
 
-use proc_macro2::{TokenTree, Spacing};
-use syn::{Result, spanned::Spanned, DeriveInput, DataEnum, Ident, Lit, LitStr};
-use quote::{ToTokens, quote};
+use proc_macro2::{Spacing, TokenTree};
+use quote::{quote, ToTokens};
+use syn::{spanned::Spanned, DataEnum, DeriveInput, Ident, Lit, LitStr, Result};
 
 #[proc_macro_derive(Display, attributes(display_override, display_concat))]
 pub fn logos_display(input: TokenStream) -> TokenStream {
@@ -19,7 +19,7 @@ pub fn logos_debug(input: TokenStream) -> TokenStream {
 fn _logos_display(input: TokenStream2, debug: bool) -> TokenStream2 {
     let ast = match syn::parse2::<DeriveInput>(input) {
         Ok(res) => res,
-        Err(e) => return e.to_compile_error()
+        Err(e) => return e.to_compile_error(),
     };
     let span = ast.span();
     let ident = ast.ident;
@@ -35,13 +35,16 @@ fn _logos_display(input: TokenStream2, debug: bool) -> TokenStream2 {
                         if resp == "None" {
                             Ok(resp)
                         } else {
-                            Err(syn::Error::new(e.span(), "Concat must be either a string or None"))
+                            Err(syn::Error::new(
+                                e.span(),
+                                "Concat must be either a string or None",
+                            ))
                         }
                     }
                 };
                 let litstr = match cand {
                     Ok(res) => res,
-                    Err(e) => return e.to_compile_error()
+                    Err(e) => return e.to_compile_error(),
                 };
                 if litstr == "None" {
                     concat = None;
@@ -54,7 +57,7 @@ fn _logos_display(input: TokenStream2, debug: bool) -> TokenStream2 {
     }
     let resp = match ast.data {
         syn::Data::Enum(e) => logos_display_derive(e, &ident, concat, debug),
-        _ => Err(syn::Error::new(span, "Can only derive display for enums"))
+        _ => Err(syn::Error::new(span, "Can only derive display for enums")),
     };
     let traitt = if debug {
         quote!(core::fmt::Debug)
@@ -75,11 +78,11 @@ fn _logos_display(input: TokenStream2, debug: bool) -> TokenStream2 {
                 }
             }
         }
-        Err(e) => e.to_compile_error()
+        Err(e) => e.to_compile_error(),
     }
 }
 
-fn gen_anon_args(n: usize) -> Vec<proc_macro2::TokenStream> {
+fn gen_anon_args(n: usize) -> Vec<TokenStream2> {
     let mut args = Vec::new();
     for i in 1..=n {
         let arg_ident = Ident::new(&format!("_arg{}", i), proc_macro2::Span::call_site());
@@ -88,7 +91,12 @@ fn gen_anon_args(n: usize) -> Vec<proc_macro2::TokenStream> {
     args
 }
 
-fn logos_display_derive(e: DataEnum, ident: &Ident, concat: Option<String>, include_inner: bool) -> Result<TokenStream2> {
+fn logos_display_derive(
+    e: DataEnum,
+    ident: &Ident,
+    concat: Option<String>,
+    include_inner: bool,
+) -> Result<TokenStream2> {
     let mut repr_map: Vec<(TokenStream2, TokenStream2)> = Vec::with_capacity(e.variants.len());
     for variant in e.variants.into_iter() {
         let res = match variant.fields {
@@ -107,7 +115,7 @@ fn logos_display_derive(e: DataEnum, ident: &Ident, concat: Option<String>, incl
                 Some((key_list, Some(ref_array)))
             }
             syn::Fields::Named(..) => {
-                let key_list = quote!({..});
+                let key_list = quote!({ .. });
                 Some((key_list, None))
             }
             syn::Fields::Unnamed(..) => {
@@ -124,7 +132,7 @@ fn logos_display_derive(e: DataEnum, ident: &Ident, concat: Option<String>, incl
                 if l.path.is_ident("display_override") {
                     let litstr = match syn::parse2::<LitStr>(l.tokens) {
                         Ok(res) => res,
-                        Err(e) => return Err(e)
+                        Err(e) => return Err(e),
                     };
                     found = Some(litstr.value());
                     break;
@@ -132,7 +140,8 @@ fn logos_display_derive(e: DataEnum, ident: &Ident, concat: Option<String>, incl
                     let mut new_stream = TokenStream2::new();
                     let span = l.span();
                     for tt in l.tokens.into_iter() {
-                        if matches!(tt, TokenTree::Punct(ref punct) if punct.as_char() == ',' && punct.spacing() == Spacing::Alone) {
+                        if matches!(tt, TokenTree::Punct(ref punct) if punct.as_char() == ',' && punct.spacing() == Spacing::Alone)
+                        {
                             break;
                         } else {
                             new_stream.extend(Some(tt));
@@ -151,7 +160,10 @@ fn logos_display_derive(e: DataEnum, ident: &Ident, concat: Option<String>, incl
                             found = Some(string);
                         }
                     } else {
-                        return Err(syn::Error::new(span, "Error extracting token from attribute, not a string"));
+                        return Err(syn::Error::new(
+                            span,
+                            "Error extracting token from attribute, not a string",
+                        ));
                     }
                 }
             }
@@ -162,25 +174,35 @@ fn logos_display_derive(e: DataEnum, ident: &Ident, concat: Option<String>, incl
         if let Some((key_list, ref_array)) = res {
             match ref_array {
                 None => repr_map.push((quote!(#id #key_list), quote!(write!(f, "{}", #repr)))),
-                Some(ref_array) => repr_map.push((quote!(#id #key_list), quote!(write!(f, "{}{:?}", #repr, [#ref_array]))))
+                Some(ref_array) => repr_map.push((
+                    quote!(#id #key_list),
+                    quote!(write!(f, "{}{:?}", #repr, [#ref_array])),
+                )),
             }
         } else {
             repr_map.push((quote!(#id), quote!(write!(f, "{}", #repr))));
         }
     }
-    let arms: Vec<TokenStream2> = repr_map.iter().map(|(k, v)| quote!(#ident::#k => #v,)).collect();
+    let arms: Vec<TokenStream2> = repr_map
+        .iter()
+        .map(|(k, v)| quote!(#ident::#k => #v,))
+        .collect();
     Ok(quote!(#( #arms )*))
 }
 
 #[cfg(test)]
 mod tests {
     use super::_logos_display;
+    use assert_tokenstreams_eq::assert_tokenstreams_eq;
     use proc_macro2::TokenStream;
     use quote::quote;
-    use assert_tokenstreams_eq::assert_tokenstreams_eq;
 
-
-    fn expect(arms: TokenStream, debug: bool, generic_lifetimes: Option<&[TokenStream]>, where_clauses: Option<&[TokenStream]>) -> TokenStream {
+    fn expect(
+        arms: TokenStream,
+        debug: bool,
+        generic_lifetimes: Option<&[TokenStream]>,
+        where_clauses: Option<&[TokenStream]>,
+    ) -> TokenStream {
         let traitt = if debug {
             quote!(core::fmt::Debug)
         } else {
@@ -189,12 +211,12 @@ mod tests {
 
         let generic_lifetimes = match generic_lifetimes {
             None => quote!(),
-            Some(generic_lifetimes) => quote!(<#(#generic_lifetimes),*>)
+            Some(generic_lifetimes) => quote!(<#(#generic_lifetimes),*>),
         };
 
         let where_clauses = match where_clauses {
             None => quote!(),
-            Some(where_clauses) => quote!(where #(#where_clauses),*)
+            Some(where_clauses) => quote!(where #(#where_clauses),*),
         };
 
         quote!(
@@ -217,7 +239,7 @@ mod tests {
                 LCur,
 
                 #[regex("}")]
-                RCur
+                RCur,
             }
         );
         let arms = quote!(
@@ -242,7 +264,7 @@ mod tests {
 
                 #[token("-")]
                 #[display_override("dash")]
-                Minus
+                Minus,
             }
         );
         let arms = quote!(
@@ -263,7 +285,7 @@ mod tests {
                 LCur,
 
                 #[regex("\".*\"")]
-                RCur
+                RCur,
             }
         );
         let arms = quote!(
@@ -283,7 +305,7 @@ mod tests {
                 LCur,
 
                 #[regex(r#"".*""#)]
-                RCur
+                RCur,
             }
         );
         let arms = quote!(
@@ -356,10 +378,7 @@ mod tests {
                 Reg(First, Second, Third),
 
                 #[regex("[A-Z]", |lex| more_funny(lex.slice()))]
-                Reg2 {
-                    first: Type,
-                    second: Another
-                }
+                Reg2 { first: Type, second: Another },
             }
         );
         let arms_debug = quote!(
@@ -379,10 +398,12 @@ mod tests {
     }
 
     #[test]
-    fn test_with_generics()
-    {
+    fn test_with_generics() {
         let input = quote!(
-            enum A<'a, 'b, T, U> where T:U {
+            enum A<'a, 'b, T, U>
+            where
+                T: U,
+            {
                 #[regex("[a-z]", |lex| funny_business(lex.slice()))]
                 Reg(First<'a>, Second<'b>, Third<'a>, T),
 
@@ -390,8 +411,8 @@ mod tests {
                 Reg2 {
                     first: Type<'a>,
                     second: Another<'b>,
-                    third: U
-                }
+                    third: U,
+                },
             }
         );
         let arms_debug = quote!(
