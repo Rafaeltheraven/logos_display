@@ -1,5 +1,5 @@
 # Logos Display
-A set of derive macros that automatically implement `Display` and `Debug` for an enum, based on the [Logos](https://github.com/maciejhirsz/logos) `token` and `regex` attributes.
+A set of derive macros that automatically implement `Display` and `Debug` for an enum, based on the [Logos](https://github.com/maciejhirsz/logos) `token` and `regex` attributes. Usable in `no_std` contexts.
 
 ## How To Use
 Simply `use logos_display::Display` and/or `use logos_display::Debug` and add it to your derives, like so:
@@ -18,13 +18,13 @@ enum A {
 |
 V
 
-impl std::fmt::Display for A {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ret = match &self {
-            A::LCur => "{",
-            A::Lower => "[a-z]",
-        };
-        write!(f, "{}", ret)
+impl core::fmt::Display for A {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use core::fmt::Write;
+        match &self {
+            A::LCur => write!(f, "{}", "{"),
+            A::Lower => write!(f, "{}", "[a-z]"),
+        }
     }
 }
 ```
@@ -46,13 +46,13 @@ enum A {
 |
 V
 
-impl std::fmt::Debug for A {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ret = match &self {
-            A::LCur => "{",
-            A::Lower(_arg1, _arg2) => format!("{}{:?}", "[a-z]", vec![_arg1, _arg2]),
-        };
-        write!(f, "{}", ret)
+impl core::fmt::Debug for A {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		use core::fmt::Write;
+        match &self {
+            A::LCur => write!(f, "{}", "{"),
+            A::Lower(_arg1, _arg2) => write!(f, "{}{:?}", "[a-z]", vec![_arg1, _arg2]),
+        }
     }
 }
 ```
@@ -77,13 +77,13 @@ enum A {
 |
 V
 
-impl std::fmt::Display for A {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ret = match &self {
-            A::LCur => "fancy curly thing",
-            A::Lower => "[a-z]",
-        };
-        write!(f, "{}", ret)
+impl core::fmt::Display for A {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		use core::fmt::Write;
+        match &self {
+            A::LCur => write!(f, "{}", "fancy curly thing"),
+            A::Lower => write!(f, "{}", "[a-z]"),
+        }
     }
 }
 ```
@@ -103,12 +103,12 @@ enum A {
 |
 V
 
-impl std::fmt::Display for A {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ret = match &self {
-            A::LCur => "{/}",
-        };
-        write!(f, "{}", ret)
+impl core::fmt::Display for A {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		use core::fmt::Write;
+        match &self {
+            A::LCur => write!(f, "{}", "{/}"),
+        }
     }
 }
 ```
@@ -127,12 +127,12 @@ enum A {
 |
 V
 
-impl std::fmt::Display for A {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ret = match &self {
-            A::LCur => "{ or }",
-        };
-        write!(f, "{}", ret)
+impl core::fmt::Display for A {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		use core::fmt::Write;
+        match &self {
+            A::LCur => write!(f, "{}", "{ or }"),
+        }
     }
 }
 ```
@@ -151,12 +151,12 @@ enum A {
 |
 V
 
-impl std::fmt::Display for A {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ret = match &self {
-            A::LCur => "}",
-        };
-        write!(f, "{}", ret)
+impl core::fmt::Display for A {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		use core::fmt::Write;
+        match &self {
+            A::LCur => write!(f, "{}", "}"),
+        }
     }
 }
 ```
